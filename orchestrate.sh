@@ -192,12 +192,33 @@ Please read the PLAN.md file and design the user interface and experience. Creat
 Project Vision: '$VISION'
 
 Please read PLAN.md and DESIGN.md files and implement the features using test-driven development. 
+
+GitHub Integration Tasks:
+1. If this is the first run (no .git directory exists):
+   - Initialize a git repository 
+   - Create a GitHub repository with the current directory name using SSH
+   - Set up SSH remote origin (git remote add origin git@github.com:username/repo.git)
+   - Push initial commit
+2. Always create a new feature branch and pull request for the implementation:
+   - Create a descriptive feature branch (e.g., 'feature/implement-user-auth-$(date +%Y%m%d)', 'feature/add-realtime-updates-$(date +%Y%m%d)')
+   - Implement the features following TDD
+   - Commit changes to the feature branch with meaningful commit messages
+   - Push the branch using SSH and create a pull request with:
+     * Title: 'feat: [Brief description of main features implemented]'
+     * Body: Detailed description of what was implemented, testing approach, and any architectural decisions
+   - Save the PR URL to .agent_work/pr_url.txt for the reviewer
+
+Implementation Tasks:
 - Write tests first, then implement features
 - Follow coding standards and best practices
 - Create all necessary code files
 - Provide implementation summary
 
-Provide a complete implementation report." | \
+Error Handling:
+- If GitHub operations fail, document the issue in your report and continue with local implementation
+- If PR creation fails, save the error details to .agent_work/github_error.txt
+
+Provide a complete implementation report including GitHub operation status." | \
                claude --dangerously-skip-permissions --print --verbose 2>&1 | tee -a "$LOG_FILE")
             
             if [ $? -eq 0 ] && check_output_quality "$DEVELOPER_OUTPUT"; then
@@ -222,12 +243,28 @@ Provide a complete implementation report." | \
 Project Vision: '$VISION'
 
 Please read PLAN.md, DESIGN.md, and IMPLEMENTATION.md to understand what was built, then create comprehensive tests.
+
+Testing Tasks:
 - Create unit and integration tests
 - Test edge cases and error conditions
 - Validate against requirements
-- Provide complete test report
+- Run all tests and document results
 
-Provide complete TEST_REPORT.md content." | \
+GitHub Integration Tasks (Optional):
+If significant test improvements or bug fixes are needed:
+1. Create a descriptive feature branch (e.g., 'test/improve-test-coverage-$(date +%Y%m%d)', 'fix/resolve-test-failures-$(date +%Y%m%d)')
+2. Implement test improvements or bug fixes
+3. Commit changes with meaningful messages
+4. Push the branch using SSH and create a pull request with:
+   * Title: 'test: [Brief description of test improvements]' or 'fix: [Brief description of fixes]'
+   * Body: Detailed description of test improvements, bug fixes, and coverage improvements
+5. Save the PR URL to .agent_work/pr_url.txt (this will override any existing PR URL for the reviewer)
+
+Error Handling:
+- If GitHub operations fail, document the issue and continue with local testing
+- Save any GitHub-related errors to .agent_work/github_error.txt
+
+Provide complete TEST_REPORT.md content including any GitHub operation status." | \
                claude --dangerously-skip-permissions --print --verbose 2>&1 | tee -a "$LOG_FILE")
             
             if [ $? -eq 0 ] && check_output_quality "$TESTER_OUTPUT"; then
@@ -260,17 +297,39 @@ Provide complete TEST_REPORT.md content." | \
             echo "" >> "$LOG_FILE"
             echo "=== PR-REVIEWER PHASE - $(date) ===" >> "$LOG_FILE"
             
-            REVIEWER_OUTPUT=$(echo "I need the pr-reviewer agent to review all the completed work.
+            REVIEWER_OUTPUT=$(echo "I need the pr-reviewer agent to review all the completed work and handle GitHub PR review.
 
 Project Vision: '$VISION'
 
+GitHub PR Review Tasks:
+1. First, check if there's a PR URL in .agent_work/pr_url.txt
+2. If PR URL exists:
+   - Use GitHub CLI (gh) to review the pull request
+   - Leave detailed review comments on any issues found
+   - If issues are found, try to resolve them by:
+     * Checking out the PR branch locally using SSH
+     * Creating commits to fix the issues with descriptive commit messages
+     * Pushing fixes to the PR branch using SSH (git push origin branch-name)
+     * Re-reviewing the updated PR
+   - If no issues or all issues are resolved: approve and merge the PR using GitHub CLI
+   - If unable to resolve critical issues: leave detailed comments and request changes
+3. If no PR URL found or GitHub operations fail:
+   - Document the error in .agent_work/github_error.txt
+   - Continue with standard file-based review below
+
+Standard Review Tasks:
 Please review all the work completed so far by reading PLAN.md, DESIGN.md, IMPLEMENTATION.md, and TEST_REPORT.md.
 - Review code quality, security, and best practices
 - Verify test coverage and documentation
 - Check adherence to project standards
 - Assess performance implications
 
-For this autonomous orchestration, please be reasonably lenient and approve if the work meets basic requirements. Provide complete REVIEW.md content with approval decision." | \
+Error Handling:
+- If unable to find the GitHub repository or PR, document this in your review
+- If GitHub operations fail, continue with local file review
+- Save any GitHub-related errors to .agent_work/github_error.txt
+
+For this autonomous orchestration, please be reasonably lenient and approve if the work meets basic requirements. Provide complete REVIEW.md content with approval decision and GitHub operation status." | \
                claude --dangerously-skip-permissions --print --verbose 2>&1 | tee -a "$LOG_FILE")
             
             if [ $? -eq 0 ] && check_output_quality "$REVIEWER_OUTPUT"; then
