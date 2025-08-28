@@ -189,6 +189,8 @@ Please read the PLAN.md file and design the user interface and experience. Creat
             
             DEVELOPER_OUTPUT=$(echo "I need the developer-agent to implement the features using test-driven development.
 
+**IMPORTANT: Use github-personal MCP server for all GitHub operations (not github-work MCP). This includes repository creation, branch management, pull requests, and all other GitHub interactions.**
+
 Project Vision: '$VISION'
 
 Please read PLAN.md and DESIGN.md files and implement the features using test-driven development. 
