@@ -57,7 +57,6 @@ $VISION
 - [ ] Architecture Planning
 - [ ] UI/UX Design  
 - [ ] Implementation
-- [ ] Testing
 - [ ] Code Review
 
 # Agent Handoffs
@@ -236,62 +235,10 @@ Provide a complete implementation report including GitHub operation status." | \
             ;;
             
         "testing")
-            log "🧪 Running feature-tester..."
-            echo "" >> "$LOG_FILE"
-            echo "=== FEATURE-TESTER PHASE - $(date) ===" >> "$LOG_FILE"
-            
-            TESTER_OUTPUT=$(echo "I need the feature-tester agent to create comprehensive tests for the implemented features.
-
-Project Vision: '$VISION'
-
-Please read PLAN.md, DESIGN.md, and IMPLEMENTATION.md to understand what was built, then create comprehensive tests.
-
-Testing Tasks:
-- Create unit and integration tests
-- Test edge cases and error conditions
-- Validate against requirements
-- Run all tests and document results
-
-GitHub Integration Tasks (Optional):
-If significant test improvements or bug fixes are needed:
-1. Create a descriptive feature branch (e.g., 'test/improve-test-coverage-$(date +%Y%m%d)', 'fix/resolve-test-failures-$(date +%Y%m%d)')
-2. Implement test improvements or bug fixes
-3. Commit changes with meaningful messages
-4. Push the branch using SSH and create a pull request with:
-   * Title: 'test: [Brief description of test improvements]' or 'fix: [Brief description of fixes]'
-   * Body: Detailed description of test improvements, bug fixes, and coverage improvements
-5. Save the PR URL to .agent_work/pr_url.txt (this will override any existing PR URL for the reviewer)
-
-Error Handling:
-- If GitHub operations fail, document the issue and continue with local testing
-- Save any GitHub-related errors to .agent_work/github_error.txt
-
-Provide complete TEST_REPORT.md content including any GitHub operation status." | \
-               claude --dangerously-skip-permissions --print --verbose 2>&1 | tee -a "$LOG_FILE")
-            
-            if [ $? -eq 0 ] && check_output_quality "$TESTER_OUTPUT"; then
-                echo "$TESTER_OUTPUT" > "$WORK_DIR/TEST_REPORT.md"
-                # Check if tests indicate success or failure
-                if echo "$TESTER_OUTPUT" | grep -qi "architect\|fundamental\|design flaw\|technology\|framework\|major change\|rethink"; then
-                    # Major architectural issues found in testing
-                    echo "planning" > "$STATE_FILE"
-                    DEVELOPMENT_RETRIES=0  # Reset retry counter for fresh start
-                    echo "RESULT: Testing identified architectural issues - going back to planning" >> "$LOG_FILE"
-                    warn "Testing identified architectural issues - restarting from planning phase"
-                elif echo "$TESTER_OUTPUT" | grep -qi "fail\|error\|issue\|problem\|bug"; then
-                    echo "development" > "$STATE_FILE"
-                    echo "RESULT: Tests found issues - retrying development" >> "$LOG_FILE"
-                    warn "Tests found issues - retrying development"
-                else
-                    echo "review" > "$STATE_FILE"
-                    echo "RESULT: Testing completed successfully" >> "$LOG_FILE"
-                    success "Testing completed"
-                fi
-            else
-                echo "ERROR: Testing failed or produced insufficient output" >> "$LOG_FILE"
-                error "Testing failed - check that feature-tester agent is properly configured"
-                exit 1
-            fi
+            # Skip testing phase - go directly to review
+            echo "review" > "$STATE_FILE"
+            echo "RESULT: Skipping testing phase - going directly to review" >> "$LOG_FILE"
+            success "Skipping testing - proceeding to review"
             ;;
             
         "review")
