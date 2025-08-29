@@ -18,6 +18,7 @@ source "$SCRIPT_DIR/lib/log.sh"
 source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/utils.sh"
 source "$SCRIPT_DIR/lib/state.sh"
+source "$SCRIPT_DIR/lib/cycle.sh"
 
 # Soft-check for python3 like original (state updates will warn/fallback if missing)
 if ! command -v python3 >/dev/null 2>&1; then
@@ -56,18 +57,25 @@ determine_starting_state() {
     
     # Determine next phase based on current cycle completion status
     if [ "$review_done_current" = "true" ]; then
-        # Check review decision for current cycle
-        if [ -f "$WORK_DIR/REVIEW.md" ] && grep -qi "approv\|accept\|good\|pass\|looks good\|well done\|complete" "$WORK_DIR/REVIEW.md"; then
-            log "✅ Review completed and approved in cycle $current_cycle, starting new cycle" >&2
-            increment_cycle
-            echo "planning"
-        elif [ -f "$WORK_DIR/REVIEW.md" ] && grep -qi "architect\|fundamental\|design flaw\|technology\|framework\|major change\|rethink" "$WORK_DIR/REVIEW.md"; then
-            log "🏗️  Review identified architectural issues, restarting from planning" >&2
-            echo "planning"
-        else
-            log "🔧 Review requested changes, resuming from development" >&2
-            echo "development"
-        fi
+        # Check review decision using structured markers
+        local decision=$(extract_review_decision)
+        
+        case "$decision" in
+            "APPROVED")
+                log "✅ Review completed and approved in cycle $current_cycle, starting new cycle" >&2
+                increment_cycle
+                init_cycle_management  # Initialize new cycle documents
+                echo "planning"
+                ;;
+            "NEEDS_ARCHITECTURE_CHANGE")
+                log "🏗️  Review identified architectural issues, restarting from planning" >&2
+                echo "planning"
+                ;;
+            "NEEDS_REVISION"|*)
+                log "🔧 Review requested changes, resuming from development" >&2
+                echo "development"
+                ;;
+        esac
     elif [ "$review_status" = "running" ]; then
         log "🔍 Review phase was interrupted, retrying review" >&2
         echo "review"
@@ -112,10 +120,16 @@ else
     DEVELOPMENT_RETRIES=0
 fi
 
+# Initialize cycle management
+init_cycle_management
+
 # Create initial context
 cat > "$CONTEXT_FILE" << EOF
 # Project Vision
 $VISION
+
+# Current Cycle: $(get_current_cycle)
+# Branch: $(get_cycle_branch)
 
 # Agent Chain Progress
 - [ ] Architecture Planning
@@ -125,6 +139,8 @@ $VISION
 
 # Agent Handoffs
 Each agent will update this file with their outputs and findings.
+See CYCLE_HANDOFF.md for detailed phase-to-phase handoffs.
+See NEXT_CYCLE_TASKS.md for accumulated tasks.
 EOF
 
 log "🚀 Starting autonomous development for: $VISION"
@@ -228,29 +244,42 @@ while true; do
             source "$SCRIPT_DIR/phases/review.sh"
             if run_review_phase "$VISION"; then
                 mark_phase_completed "review"
-                # Check if review approves or requests changes
-                if grep -qi "approv\|accept\|good\|pass\|looks good\|well done\|complete" "$WORK_DIR/REVIEW.md"; then
-                    mark_orchestration_completed
-                    echo "complete" > "$STATE_FILE"
-                    echo "RESULT: Code review completed - APPROVED" >> "$LOG_FILE"
-                    success "Code review completed - APPROVED"
-                elif [ ${DEVELOPMENT_RETRIES:-0} -ge $MAX_RETRIES ]; then
-                    # Force completion if we've hit max retries
-                    mark_orchestration_completed
-                    echo "complete" > "$STATE_FILE"
-                    echo "RESULT: Code review completed - FORCED APPROVAL after max retries" >> "$LOG_FILE"
-                    warn "Forcing completion after $MAX_RETRIES development attempts"
-                elif grep -qi "architect\|fundamental\|design flaw\|technology\|framework\|major change\|rethink" "$WORK_DIR/REVIEW.md"; then
-                    # Major architectural issues detected - go back to planning
-                    echo "planning" > "$STATE_FILE"
-                    DEVELOPMENT_RETRIES=0  # Reset retry counter for fresh start
-                    echo "RESULT: Review identified architectural issues - going back to planning" >> "$LOG_FILE"
-                    warn "Review identified architectural issues - restarting from planning phase"
-                else
-                    echo "development" > "$STATE_FILE"
-                    echo "RESULT: Review requested changes - retrying development" >> "$LOG_FILE"
-                    warn "Review requested changes - retrying development"
-                fi
+                # Extract structured decision from review
+                local decision=$(extract_review_decision)
+                
+                case "$decision" in
+                    "APPROVED")
+                        record_cycle_completion "$(get_current_cycle)" "completed" "APPROVED"
+                        increment_cycle
+                        init_cycle_management  # Prepare for next cycle
+                        echo "planning" > "$STATE_FILE"
+                        echo "RESULT: Cycle $(get_current_cycle) completed - APPROVED, starting new cycle" >> "$LOG_FILE"
+                        success "Cycle completed - APPROVED, starting new cycle"
+                        ;;
+                    "NEEDS_ARCHITECTURE_CHANGE")
+                        echo "planning" > "$STATE_FILE"
+                        DEVELOPMENT_RETRIES=0
+                        add_next_cycle_task "Priority Tasks" "Address architectural issues identified in review"
+                        echo "RESULT: Review identified architectural issues - restarting from planning" >> "$LOG_FILE"
+                        warn "Review identified architectural issues - restarting from planning phase"
+                        ;;
+                    "NEEDS_REVISION"|*)
+                        if [ ${DEVELOPMENT_RETRIES:-0} -ge $MAX_RETRIES ]; then
+                            # Force move to next cycle after max retries
+                            record_cycle_completion "$(get_current_cycle)" "partial" "MAX_RETRIES_REACHED"
+                            add_next_cycle_task "Priority Tasks" "Complete unfinished work from cycle $(get_current_cycle)"
+                            increment_cycle
+                            init_cycle_management
+                            echo "planning" > "$STATE_FILE"
+                            echo "RESULT: Max retries reached - moving to next cycle" >> "$LOG_FILE"
+                            warn "Max development attempts reached - starting fresh cycle"
+                        else
+                            echo "development" > "$STATE_FILE"
+                            echo "RESULT: Review requested changes - retrying development" >> "$LOG_FILE"
+                            warn "Review requested changes - retrying development"
+                        fi
+                        ;;
+                esac
             else
                 echo "ERROR: Code review failed or produced insufficient output" >> "$LOG_FILE"
                 error "Code review failed - check that pr-reviewer agent is properly configured"
@@ -261,11 +290,21 @@ while true; do
         "complete")
             echo "" >> "$LOG_FILE"
             echo "=== ORCHESTRATION COMPLETED - $(date) ===" >> "$LOG_FILE"
-            echo "All phases completed successfully!" >> "$LOG_FILE"
+            echo "All cycles completed successfully!" >> "$LOG_FILE"
+            
+            # Perform final cleanup of old PRs/branches if needed
+            cleanup_old_cycles
+            
             success "🎉 Autonomous development completed!"
             log "📋 Final results in: $WORK_DIR"
-            log "📄 Summary: cat $WORK_DIR/context.md"
+            log "📄 Cycle history: cat $CYCLE_HISTORY_FILE"
             log "📝 Full logs: cat $LOG_FILE"
+            
+            # Check if we should continue with another cycle
+            if [ -f "$NEXT_CYCLE_TASKS_FILE" ] && grep -q "^- " "$NEXT_CYCLE_TASKS_FILE"; then
+                log "📌 Tasks pending for next cycle - consider running again"
+            fi
+            
             break
             ;;
             

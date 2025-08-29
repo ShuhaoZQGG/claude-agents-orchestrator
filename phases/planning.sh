@@ -4,6 +4,9 @@ run_planning_phase() {
     local vision="$1"
     echo "" >> "$LOG_FILE"
     echo "=== PROJECT-ARCHITECT PHASE - $(date) ===" >> "$LOG_FILE"
+    
+    # Load cycle management functions
+    source "$SCRIPT_DIR/lib/cycle.sh"
 
     local existing_docs=""
     [ -f "$WORK_DIR/DESIGN.md" ] && existing_docs+=$'\n\nPlease also read the existing DESIGN.md file to understand current design decisions.'
@@ -11,19 +14,54 @@ run_planning_phase() {
     [ -f "$WORK_DIR/TEST_REPORT.md" ] && existing_docs+=$'\n\nPlease also read the existing TEST_REPORT.md file to understand testing feedback and any issues found.'
     [ -f "$WORK_DIR/REVIEW.md" ] && existing_docs+=$'\n\nPlease also read the existing REVIEW.md file to understand reviewer feedback and requested changes.'
 
-    local prompt="AGENT-TO-AGENT COMMUNICATION: You are receiving this from the orchestration system. Be direct and efficient.
+    # Check if we need to create a new cycle branch or use existing
+    local cycle_num=$(get_current_cycle)
+    local branch_name=$(get_cycle_branch)
+    local existing_pr=$(check_existing_pr)
+    
+    local git_instructions=""
+    if [ -z "$existing_pr" ]; then
+        git_instructions="
+Git Tasks (FIRST TIME IN CYCLE $cycle_num):
+1. Create and checkout branch: '$branch_name'
+2. Commit PLAN.md with message: 'feat(cycle-$cycle_num): architectural planning and requirements analysis'
+3. Push branch and create PR titled: 'Cycle $cycle_num: Development Pipeline'
+4. Save PR URL to .agent_work/cycle_pr.txt"
+    else
+        git_instructions="
+Git Tasks (CONTINUING CYCLE $cycle_num):
+1. Checkout existing branch: '$branch_name'
+2. Commit PLAN.md with message: 'feat(cycle-$cycle_num): update architectural planning'
+3. Push to existing PR: $existing_pr"
+    fi
+    
+    # Check for handoff notes and next cycle tasks
+    local handoff_context=""
+    if [ -f "$CYCLE_HANDOFF_FILE" ]; then
+        handoff_context="
+
+PLEASE READ CYCLE_HANDOFF.md for context from previous phases."
+    fi
+    if [ -f "$NEXT_CYCLE_TASKS_FILE" ] && [ "$cycle_num" -gt 1 ]; then
+        handoff_context="$handoff_context
+PLEASE READ NEXT_CYCLE_TASKS.md for accumulated tasks from previous cycles."
+    fi
+    
+    local prompt="AGENT-TO-AGENT COMMUNICATION: Cycle $cycle_num Planning Phase
 
 Project Vision: '$vision'
 
 Tasks:
 1. Analyze vision and create comprehensive project plan
-2. Output requirements, architecture, tech stack, phases, risks to PLAN.md
-3. Create feature branch 'planning/architecture-$(date +%Y%m%d-%H%M%S)'
-4. Commit PLAN.md with message 'feat: architectural planning and requirements analysis'
-5. Push branch and create PR with title 'Architecture: Project planning phase'
-6. Save PR URL to .agent_work/planning_pr.txt${existing_docs}
+2. Output requirements, architecture, tech stack, phases, risks to PLAN.md$git_instructions${existing_docs}${handoff_context}
 
-If revision: incorporate previous feedback.
+<!-- HANDOFF_START -->
+Update CYCLE_HANDOFF.md with:
+- Completed: Planning phase with key architectural decisions
+- Pending: Any unresolved questions for design phase
+- Technical: Major technology choices made
+<!-- HANDOFF_END -->
+
 Output directly to PLAN.md. Be concise."
 
     local output
@@ -35,6 +73,16 @@ Output directly to PLAN.md. Be concise."
     output=$(echo "$prompt" | eval "$CLAUDE_CMD" 2>&1 | tee -a "$LOG_FILE")
     if [ $? -eq 0 ] && check_output_quality "$output"; then
         echo "$output" > "$WORK_DIR/PLAN.md"
+        
+        # Update cycle handoff
+        update_handoff_completed "Planning" "Created architectural plan and requirements"
+        
+        # Check and save PR URL if created
+        if [ -f "$WORK_DIR/cycle_pr.txt" ]; then
+            local pr_url=$(cat "$WORK_DIR/cycle_pr.txt")
+            set_cycle_pr_url "$pr_url"
+        fi
+        
         return 0
     else
         return 1
