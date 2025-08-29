@@ -1,370 +1,30 @@
 #!/bin/bash
 
-# Simple Autonomous Agent Orchestrator
+# Simple Autonomous Agent Orchestrator (modularized)
 # Usage: ./orchestrate.sh "Build a task management app with user auth and real-time updates"
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-log() {
-    echo -e "${BLUE}[$(date '+%H:%M:%S')] $1${NC}"
-}
-
-success() {
-    echo -e "${GREEN}✓ $1${NC}"
-}
-
-error() {
-    echo -e "${RED}✗ $1${NC}"
-}
-
-warn() {
-    echo -e "${YELLOW}⚠ $1${NC}"
-}
-
-VISION="$1"
-PROJECT_DIR=$(pwd)
-WORK_DIR="$PROJECT_DIR/.agent_work"
-STATE_FILE="$WORK_DIR/state.txt"
-CONTEXT_FILE="$WORK_DIR/context.md"
-LOG_FILE="$WORK_DIR/orchestrator.log"
-ORCHESTRATION_STATE_FILE="$WORK_DIR/orchestration_state.json"
-
-if [ -z "$VISION" ]; then
+VISION=${1:-}
+if [ -z "${VISION}" ]; then
     echo "Usage: $0 \"Your product vision\""
     exit 1
 fi
 
-# Initialize work directory
-mkdir -p "$WORK_DIR"
+# Source libs
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/colors.sh"
+source "$SCRIPT_DIR/lib/log.sh"
+source "$SCRIPT_DIR/lib/config.sh"
+source "$SCRIPT_DIR/lib/utils.sh"
+source "$SCRIPT_DIR/lib/state.sh"
 
-# Orchestration state management functions
-init_orchestration_state() {
-    cat > "$ORCHESTRATION_STATE_FILE" << EOF
-{
-  "current_phase": "planning",
-  "current_cycle": 1,
-  "last_updated": "$(date -Iseconds)",
-  "phases": {
-    "planning": {"status": "pending", "started": null, "completed": null, "attempts": 0, "cycle": 1},
-    "design": {"status": "pending", "started": null, "completed": null, "attempts": 0, "cycle": 0},
-    "development": {"status": "pending", "started": null, "completed": null, "attempts": 0, "cycle": 0},
-    "review": {"status": "pending", "started": null, "completed": null, "attempts": 0, "cycle": 0}
-  },
-  "overall_status": "in_progress",
-  "handoffs": {
-    "planning_to_design": [],
-    "design_to_development": [],
-    "development_to_review": [],
-    "review_to_planning": [],
-    "planning_to_planning": [],
-    "design_to_design": [],
-    "development_to_development": [],
-    "review_to_review": []
-  },
-  "cycle_history": {
-    "1": {"phases_completed": [], "issues_found": [], "lessons_learned": []}
-  }
-}
-EOF
-}
+# Soft-check for python3 like original (state updates will warn/fallback if missing)
+if ! command -v python3 >/dev/null 2>&1; then
+    warn "python3 not found; orchestration state updates may be limited"
+fi
 
-mark_phase_started() {
-    local phase="$1"
-    local timestamp=$(date -Iseconds)
-    
-    # Use a simple approach with temporary file since jq might not be available
-    python3 -c "
-import json
-import sys
-try:
-    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
-        state = json.load(f)
-    
-    state['current_phase'] = '$phase'
-    state['last_updated'] = '$timestamp'
-    state['phases']['$phase']['status'] = 'running'
-    state['phases']['$phase']['started'] = '$timestamp'
-    state['phases']['$phase']['attempts'] = state['phases']['$phase'].get('attempts', 0) + 1
-    
-    with open('$ORCHESTRATION_STATE_FILE', 'w') as f:
-        json.dump(state, f, indent=2)
-except Exception as e:
-    print(f'Error updating state: {e}', file=sys.stderr)
-    sys.exit(1)
-" 2>/dev/null || {
-        # Fallback if python3 is not available
-        echo "Warning: Could not update orchestration state (python3 not available)" >&2
-    }
-}
-
-mark_phase_completed() {
-    local phase="$1" 
-    local timestamp=$(date -Iseconds)
-    
-    python3 -c "
-import json
-import sys
-try:
-    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
-        state = json.load(f)
-    
-    state['last_updated'] = '$timestamp'
-    state['phases']['$phase']['status'] = 'completed'
-    state['phases']['$phase']['completed'] = '$timestamp'
-    
-    with open('$ORCHESTRATION_STATE_FILE', 'w') as f:
-        json.dump(state, f, indent=2)
-except Exception as e:
-    print(f'Error updating state: {e}', file=sys.stderr)
-    sys.exit(1)
-" 2>/dev/null || {
-        echo "Warning: Could not update orchestration state (python3 not available)" >&2
-    }
-}
-
-mark_orchestration_completed() {
-    local timestamp=$(date -Iseconds)
-    
-    python3 -c "
-import json
-import sys
-try:
-    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
-        state = json.load(f)
-    
-    state['current_phase'] = 'complete'
-    state['last_updated'] = '$timestamp'
-    state['overall_status'] = 'completed'
-    
-    with open('$ORCHESTRATION_STATE_FILE', 'w') as f:
-        json.dump(state, f, indent=2)
-except Exception as e:
-    print(f'Error updating state: {e}', file=sys.stderr)
-    sys.exit(1)
-" 2>/dev/null || {
-        echo "Warning: Could not update orchestration state (python3 not available)" >&2
-    }
-}
-
-get_phase_status() {
-    local phase="$1"
-    
-    python3 -c "
-import json
-import sys
-try:
-    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
-        state = json.load(f)
-    print(state['phases']['$phase']['status'])
-except:
-    print('unknown')
-" 2>/dev/null || echo "unknown"
-}
-
-get_phase_attempts() {
-    local phase="$1"
-    
-    python3 -c "
-import json
-import sys
-try:
-    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
-        state = json.load(f)
-    print(state['phases']['$phase'].get('attempts', 0))
-except:
-    print('0')
-" 2>/dev/null || echo "0"
-}
-
-get_phase_cycle() {
-    local phase="$1"
-    
-    python3 -c "
-import json
-import sys
-try:
-    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
-        state = json.load(f)
-    print(state['phases']['$phase'].get('cycle', 1))
-except:
-    print('1')
-" 2>/dev/null || echo "1"
-}
-
-get_current_cycle() {
-    python3 -c "
-import json
-import sys
-try:
-    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
-        state = json.load(f)
-    print(state.get('current_cycle', 1))
-except:
-    print('1')
-" 2>/dev/null || echo "1"
-}
-
-# Add handoff note from one agent to another
-add_handoff_note() {
-    local from_phase="$1"
-    local to_phase="$2"
-    local note="$3"
-    local timestamp=$(date -Iseconds)
-    local handoff_key="${from_phase}_to_${to_phase}"
-    
-    python3 -c "
-import json
-import sys
-try:
-    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
-        state = json.load(f)
-    
-    handoff_entry = {
-        'timestamp': '$timestamp',
-        'cycle': state.get('current_cycle', 1),
-        'note': '$note'
-    }
-    
-    if '$handoff_key' not in state['handoffs']:
-        state['handoffs']['$handoff_key'] = []
-    
-    state['handoffs']['$handoff_key'].append(handoff_entry)
-    state['last_updated'] = '$timestamp'
-    
-    with open('$ORCHESTRATION_STATE_FILE', 'w') as f:
-        json.dump(state, f, indent=2)
-except Exception as e:
-    print(f'Error adding handoff note: {e}', file=sys.stderr)
-    sys.exit(1)
-" 2>/dev/null || {
-        echo "Warning: Could not add handoff note (python3 not available)" >&2
-    }
-}
-
-# Get handoff notes for a specific transition
-get_handoff_notes() {
-    local from_phase="$1"
-    local to_phase="$2"
-    local handoff_key="${from_phase}_to_${to_phase}"
-    
-    python3 -c "
-import json
-import sys
-try:
-    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
-        state = json.load(f)
-    
-    handoffs = state['handoffs'].get('$handoff_key', [])
-    for handoff in handoffs[-3:]:  # Get last 3 handoff notes
-        cycle = handoff.get('cycle', 'unknown')
-        note = handoff.get('note', '')
-        print(f'[Cycle {cycle}] {note}')
-except:
-    pass
-" 2>/dev/null || echo ""
-}
-
-# Increment cycle when going back to planning
-increment_cycle() {
-    local timestamp=$(date -Iseconds)
-    
-    python3 -c "
-import json
-import sys
-try:
-    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
-        state = json.load(f)
-    
-    current_cycle = state.get('current_cycle', 1)
-    new_cycle = current_cycle + 1
-    
-    state['current_cycle'] = new_cycle
-    state['last_updated'] = '$timestamp'
-    
-    # Initialize new cycle history
-    state['cycle_history'][str(new_cycle)] = {
-        'phases_completed': [],
-        'issues_found': [],
-        'lessons_learned': []
-    }
-    
-    # Reset phase cycles
-    for phase in state['phases']:
-        if phase == 'planning':
-            state['phases'][phase]['cycle'] = new_cycle
-        else:
-            state['phases'][phase]['cycle'] = 0
-    
-    with open('$ORCHESTRATION_STATE_FILE', 'w') as f:
-        json.dump(state, f, indent=2)
-except Exception as e:
-    print(f'Error incrementing cycle: {e}', file=sys.stderr)
-    sys.exit(1)
-" 2>/dev/null || {
-        echo "Warning: Could not increment cycle (python3 not available)" >&2
-    }
-}
-
-# Update phase cycle when starting
-update_phase_cycle() {
-    local phase="$1"
-    local timestamp=$(date -Iseconds)
-    
-    python3 -c "
-import json
-import sys
-try:
-    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
-        state = json.load(f)
-    
-    current_cycle = state.get('current_cycle', 1)
-    state['phases']['$phase']['cycle'] = current_cycle
-    state['last_updated'] = '$timestamp'
-    
-    with open('$ORCHESTRATION_STATE_FILE', 'w') as f:
-        json.dump(state, f, indent=2)
-except Exception as e:
-    print(f'Error updating phase cycle: {e}', file=sys.stderr)
-    sys.exit(1)
-" 2>/dev/null || {
-        echo "Warning: Could not update phase cycle (python3 not available)" >&2
-    }
-}
-
-# Check if a phase was completed in the current cycle
-is_phase_completed_in_current_cycle() {
-    local phase="$1"
-    
-    python3 -c "
-import json
-import sys
-try:
-    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
-        state = json.load(f)
-    
-    current_cycle = state.get('current_cycle', 1)
-    phase_cycle = state['phases']['$phase'].get('cycle', 0)
-    phase_status = state['phases']['$phase'].get('status', 'pending')
-    
-    # Phase is completed in current cycle if:
-    # 1. Status is completed AND cycle matches current cycle
-    if phase_status == 'completed' and phase_cycle == current_cycle:
-        print('true')
-    else:
-        print('false')
-except:
-    print('false')
-" 2>/dev/null || echo "false"
-}
-
-# Smart state resumption logic using orchestration state
+##### Smart state resumption logic using orchestration state (unchanged behavior) #####
 determine_starting_state() {
     # Initialize orchestration state if it doesn't exist
     if [ ! -f "$ORCHESTRATION_STATE_FILE" ]; then
@@ -442,8 +102,7 @@ INITIAL_STATE=$(determine_starting_state)
 echo "$INITIAL_STATE" > "$STATE_FILE"
 log "🚀 Starting/resuming from state: $INITIAL_STATE"
 
-# Counter for infinite loop protection  
-MAX_RETRIES=3
+# Counter for infinite loop protection is provided by config.sh (MAX_RETRIES)
 
 # Get development retry count from orchestration state
 if [ "$INITIAL_STATE" = "development" ]; then
@@ -490,20 +149,6 @@ echo "Vision: $VISION" >> "$LOG_FILE"
 echo "Started: $(date)" >> "$LOG_FILE"
 echo "======================================" >> "$LOG_FILE"
 
-# Function to check if output is meaningful (more than just whitespace)
-check_output_quality() {
-    local output="$1"
-    local min_chars=100
-    
-    # Remove whitespace and count actual content
-    local content_length=$(echo "$output" | tr -d '[:space:]' | wc -c)
-    
-    if [ "$content_length" -lt "$min_chars" ]; then
-        return 1
-    fi
-    return 0
-}
-
 # Main orchestration loop
 while true; do
     STATE=$(cat "$STATE_FILE")
@@ -514,45 +159,8 @@ while true; do
             log "🏗️  Running project-architect..."
             mark_phase_started "planning"
             update_phase_cycle "planning"
-            echo "" >> "$LOG_FILE"
-            echo "=== PROJECT-ARCHITECT PHASE - $(date) ===" >> "$LOG_FILE"
-            
-            # Check for existing documents to inform architecture decisions
-            EXISTING_DOCS=""
-            if [ -f "$WORK_DIR/DESIGN.md" ]; then
-                EXISTING_DOCS="$EXISTING_DOCS\n\nPlease also read the existing DESIGN.md file to understand current design decisions."
-            fi
-            if [ -f "$WORK_DIR/IMPLEMENTATION.md" ]; then
-                EXISTING_DOCS="$EXISTING_DOCS\n\nPlease also read the existing IMPLEMENTATION.md file to understand what was previously implemented."
-            fi
-            if [ -f "$WORK_DIR/TEST_REPORT.md" ]; then
-                EXISTING_DOCS="$EXISTING_DOCS\n\nPlease also read the existing TEST_REPORT.md file to understand testing feedback and any issues found."
-            fi
-            if [ -f "$WORK_DIR/REVIEW.md" ]; then
-                EXISTING_DOCS="$EXISTING_DOCS\n\nPlease also read the existing REVIEW.md file to understand reviewer feedback and requested changes."
-            fi
-
-            ARCHITECT_OUTPUT=$(echo "I need the project-architect agent to analyze this vision and create a comprehensive project plan.
-
-Project Vision: '$VISION'
-
-Please analyze this vision and create a comprehensive project plan with:
-- Requirements analysis
-- System architecture 
-- Technology stack selection
-- Project phases and deliverables
-- Risk assessment$EXISTING_DOCS
-
-If this is a revision based on existing work, please:
-- Incorporate lessons learned from previous implementation attempts
-- Address any issues identified in testing or code review
-- Refine the architecture based on real-world constraints discovered
-
-Provide a complete PLAN.md file content." | \
-               claude --dangerously-skip-permissions --print --verbose 2>&1 | tee -a "$LOG_FILE")
-            
-            if [ $? -eq 0 ] && check_output_quality "$ARCHITECT_OUTPUT"; then
-                echo "$ARCHITECT_OUTPUT" > "$WORK_DIR/PLAN.md"
+            source "$SCRIPT_DIR/phases/planning.sh"
+            if run_planning_phase "$VISION"; then
                 mark_phase_completed "planning"
                 echo "design" > "$STATE_FILE"
                 echo "RESULT: Architecture planning completed successfully" >> "$LOG_FILE"
@@ -568,23 +176,8 @@ Provide a complete PLAN.md file content." | \
             log "🎨 Running ui-feature-designer..."
             mark_phase_started "design"
             update_phase_cycle "design"
-            echo "" >> "$LOG_FILE"
-            echo "=== UI-FEATURE-DESIGNER PHASE - $(date) ===" >> "$LOG_FILE"
-            
-            DESIGNER_OUTPUT=$(echo "I need the ui-feature-designer agent to design the user interface and experience.
-
-Project Vision: '$VISION'
-
-Please read the PLAN.md file and design the user interface and experience. Create complete DESIGN.md content with:
-- User journey maps
-- Interface mockups
-- Responsive design considerations  
-- Accessibility requirements
-- Interactive element specifications" | \
-               claude --dangerously-skip-permissions --print --verbose 2>&1 | tee -a "$LOG_FILE")
-            
-            if [ $? -eq 0 ] && check_output_quality "$DESIGNER_OUTPUT"; then
-                echo "$DESIGNER_OUTPUT" > "$WORK_DIR/DESIGN.md"
+            source "$SCRIPT_DIR/phases/design.sh"
+            if run_design_phase "$VISION"; then
                 mark_phase_completed "design"
                 echo "development" > "$STATE_FILE"
                 DEVELOPMENT_RETRIES=0  # Reset retry counter
@@ -608,47 +201,8 @@ Please read the PLAN.md file and design the user interface and experience. Creat
             log "👨‍💻 Running developer-agent (attempt $DEVELOPMENT_RETRIES/$MAX_RETRIES)..."
             mark_phase_started "development"
             update_phase_cycle "development"
-            echo "" >> "$LOG_FILE"
-            echo "=== DEVELOPER-AGENT PHASE - $(date) (Attempt $DEVELOPMENT_RETRIES) ===" >> "$LOG_FILE"
-            
-            DEVELOPER_OUTPUT=$(echo "I need the developer-agent to implement the features using test-driven development.
-
-**IMPORTANT: Use github-personal MCP server for all GitHub operations (not github-work MCP). This includes repository creation, branch management, pull requests, and all other GitHub interactions.**
-
-Project Vision: '$VISION'
-
-Please read PLAN.md and DESIGN.md files and implement the features using test-driven development. 
-
-GitHub Integration Tasks:
-1. If this is the first run (no .git directory exists):
-   - Initialize a git repository 
-   - Create a GitHub repository with the current directory name using SSH
-   - Set up SSH remote origin (git remote add origin git@github.com:username/repo.git)
-   - Push initial commit
-2. Always create a new feature branch and pull request for the implementation:
-   - Create a descriptive feature branch (e.g., 'feature/implement-user-auth-$(date +%Y%m%d)', 'feature/add-realtime-updates-$(date +%Y%m%d)')
-   - Implement the features following TDD
-   - Commit changes to the feature branch with meaningful commit messages
-   - Push the branch using SSH and create a pull request with:
-     * Title: 'feat: [Brief description of main features implemented]'
-     * Body: Detailed description of what was implemented, testing approach, and any architectural decisions
-   - Save the PR URL to .agent_work/pr_url.txt for the reviewer
-
-Implementation Tasks:
-- Write tests first, then implement features
-- Follow coding standards and best practices
-- Create all necessary code files
-- Provide implementation summary
-
-Error Handling:
-- If GitHub operations fail, document the issue in your report and continue with local implementation
-- If PR creation fails, save the error details to .agent_work/github_error.txt
-
-Provide a complete implementation report including GitHub operation status." | \
-               claude --dangerously-skip-permissions --print --verbose 2>&1 | tee -a "$LOG_FILE")
-            
-            if [ $? -eq 0 ] && check_output_quality "$DEVELOPER_OUTPUT"; then
-                echo "$DEVELOPER_OUTPUT" > "$WORK_DIR/IMPLEMENTATION.md"
+            source "$SCRIPT_DIR/phases/development.sh"
+            if run_development_phase "$VISION" "$DEVELOPMENT_RETRIES"; then
                 mark_phase_completed "development"
                 echo "testing" > "$STATE_FILE"
                 echo "RESULT: Development completed successfully" >> "$LOG_FILE"
@@ -671,60 +225,22 @@ Provide a complete implementation report including GitHub operation status." | \
             log "🔍 Running pr-reviewer..."
             mark_phase_started "review"
             update_phase_cycle "review"
-            echo "" >> "$LOG_FILE"
-            echo "=== PR-REVIEWER PHASE - $(date) ===" >> "$LOG_FILE"
-            
-            REVIEWER_OUTPUT=$(echo "I need the pr-reviewer agent to review all the completed work and handle GitHub PR review.
-
-Project Vision: '$VISION'
-
-GitHub PR Review Tasks:
-1. First, check if there's a PR URL in .agent_work/pr_url.txt
-2. If PR URL exists:
-   - Use GitHub CLI (gh) to review the pull request
-   - Leave detailed review comments on any issues found
-   - If issues are found, try to resolve them by:
-     * Checking out the PR branch locally using SSH
-     * Creating commits to fix the issues with descriptive commit messages
-     * Pushing fixes to the PR branch using SSH (git push origin branch-name)
-     * Re-reviewing the updated PR
-   - If no issues or all issues are resolved: approve and merge the PR using GitHub CLI
-   - If unable to resolve critical issues: leave detailed comments and request changes
-3. If no PR URL found or GitHub operations fail:
-   - Document the error in .agent_work/github_error.txt
-   - Continue with standard file-based review below
-
-Standard Review Tasks:
-Please review all the work completed so far by reading PLAN.md, DESIGN.md, IMPLEMENTATION.md, and TEST_REPORT.md.
-- Review code quality, security, and best practices
-- Verify test coverage and documentation
-- Check adherence to project standards
-- Assess performance implications
-
-Error Handling:
-- If unable to find the GitHub repository or PR, document this in your review
-- If GitHub operations fail, continue with local file review
-- Save any GitHub-related errors to .agent_work/github_error.txt
-
-For this autonomous orchestration, please be reasonably lenient and approve if the work meets basic requirements. Provide complete REVIEW.md content with approval decision and GitHub operation status." | \
-               claude --dangerously-skip-permissions --print --verbose 2>&1 | tee -a "$LOG_FILE")
-            
-            if [ $? -eq 0 ] && check_output_quality "$REVIEWER_OUTPUT"; then
-                echo "$REVIEWER_OUTPUT" > "$WORK_DIR/REVIEW.md"
+            source "$SCRIPT_DIR/phases/review.sh"
+            if run_review_phase "$VISION"; then
                 mark_phase_completed "review"
                 # Check if review approves or requests changes
-                if echo "$REVIEWER_OUTPUT" | grep -qi "approv\|accept\|good\|pass\|looks good\|well done\|complete"; then
+                if grep -qi "approv\|accept\|good\|pass\|looks good\|well done\|complete" "$WORK_DIR/REVIEW.md"; then
                     mark_orchestration_completed
                     echo "complete" > "$STATE_FILE"
                     echo "RESULT: Code review completed - APPROVED" >> "$LOG_FILE"
                     success "Code review completed - APPROVED"
-                elif [ $DEVELOPMENT_RETRIES -ge $MAX_RETRIES ]; then
+                elif [ ${DEVELOPMENT_RETRIES:-0} -ge $MAX_RETRIES ]; then
                     # Force completion if we've hit max retries
                     mark_orchestration_completed
                     echo "complete" > "$STATE_FILE"
                     echo "RESULT: Code review completed - FORCED APPROVAL after max retries" >> "$LOG_FILE"
                     warn "Forcing completion after $MAX_RETRIES development attempts"
-                elif echo "$REVIEWER_OUTPUT" | grep -qi "architect\|fundamental\|design flaw\|technology\|framework\|major change\|rethink"; then
+                elif grep -qi "architect\|fundamental\|design flaw\|technology\|framework\|major change\|rethink" "$WORK_DIR/REVIEW.md"; then
                     # Major architectural issues detected - go back to planning
                     echo "planning" > "$STATE_FILE"
                     DEVELOPMENT_RETRIES=0  # Reset retry counter for fresh start

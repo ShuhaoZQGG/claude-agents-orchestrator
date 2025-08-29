@@ -1,3 +1,25 @@
+# Claude Agents Orchestrator
+
+Entry point: `orchestrate.sh`
+
+This script orchestrates multiple agent phases (planning, design, development, review). The code has been modularized for easier maintenance:
+
+- `lib/` common helpers
+  - `colors.sh`, `log.sh`, `config.sh`, `utils.sh`, `state.sh`
+- `phases/` phase implementations
+  - `planning.sh`, `design.sh`, `development.sh`, `review.sh`
+
+Behavior and prompts remain the same as before; only structure changed.
+
+Run:
+
+```bash
+./orchestrate.sh "Build a task management app with user auth and real-time updates"
+```
+
+Notes:
+- Requires a `claude` CLI in your `PATH`.
+- `python3` is used for JSON state updates; if missing, state updates will warn and degrade gracefully.
 # Simple Agent Orchestrator
 
 A lightweight system for autonomous software development using Claude agents in sequence.
