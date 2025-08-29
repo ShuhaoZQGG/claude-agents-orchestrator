@@ -7,8 +7,22 @@ set -e
 
 VISION=${1:-}
 if [ -z "${VISION}" ]; then
-    echo "Usage: $0 \"Your product vision\""
+    echo "Usage: $0 \"Your product vision\" [--force-reset]"
+    echo "  --force-reset: Reset stuck cycles and start fresh"
     exit 1
+fi
+
+# Check for force reset flag
+FORCE_RESET=false
+if [ "${2:-}" = "--force-reset" ] || [ "${1:-}" = "--force-reset" ]; then
+    FORCE_RESET=true
+    if [ "${1:-}" = "--force-reset" ]; then
+        VISION="${2:-}"
+        if [ -z "${VISION}" ]; then
+            echo "Error: Vision required even with --force-reset"
+            exit 1
+        fi
+    fi
 fi
 
 # Source libs
@@ -27,6 +41,20 @@ fi
 
 ##### Smart state resumption logic using orchestration state (unchanged behavior) #####
 determine_starting_state() {
+    # Handle force reset
+    if [ "$FORCE_RESET" = true ]; then
+        log "🔄 Force reset requested - starting fresh" >&2
+        if [ -f "$ORCHESTRATION_STATE_FILE" ]; then
+            local old_cycle=$(get_current_cycle)
+            record_cycle_completion "$old_cycle" "force_reset" "USER_REQUESTED_RESET"
+            add_next_cycle_task "Priority Tasks" "Review and incorporate work from force-reset cycle $old_cycle"
+        fi
+        init_orchestration_state
+        init_cycle_management
+        echo "planning"
+        return
+    fi
+    
     # Initialize orchestration state if it doesn't exist
     if [ ! -f "$ORCHESTRATION_STATE_FILE" ]; then
         log "🆕 No orchestration state found, initializing fresh" >&2
@@ -84,8 +112,17 @@ determine_starting_state() {
         echo "review"
     elif [ "$development_status" = "running" ]; then
         local dev_attempts=$(get_phase_attempts "development")
-        log "👨‍💻 Development phase was interrupted (attempt $dev_attempts), retrying" >&2
-        echo "development"
+        
+        # Check if development has exceeded max retries
+        if [ $dev_attempts -ge $MAX_RETRIES ]; then
+            log "⚠️  Development stuck with $dev_attempts attempts (max: $MAX_RETRIES)" >&2
+            log "🔄 Starting new cycle to recover" >&2
+            increment_cycle
+            echo "planning"
+        else
+            log "👨‍💻 Development phase was interrupted (attempt $dev_attempts), retrying" >&2
+            echo "development"
+        fi
     elif [ "$design_done_current" = "true" ]; then
         log "🎨 Design completed in cycle $current_cycle, proceeding to development" >&2
         echo "development"
@@ -115,7 +152,25 @@ log "🚀 Starting/resuming from state: $INITIAL_STATE"
 # Get development retry count from orchestration state
 if [ "$INITIAL_STATE" = "development" ]; then
     DEVELOPMENT_RETRIES=$(get_phase_attempts "development")
-    log "📊 Resuming development with attempt count: $DEVELOPMENT_RETRIES/$MAX_RETRIES"
+    
+    # Check if we've already exceeded max retries
+    if [ $DEVELOPMENT_RETRIES -ge $MAX_RETRIES ]; then
+        log "⚠️  Development already attempted $DEVELOPMENT_RETRIES times (max: $MAX_RETRIES)"
+        log "🔄 Moving to next cycle to recover from stuck state"
+        
+        # Record the stuck cycle and move to next
+        record_cycle_completion "$(get_current_cycle)" "stuck" "MAX_RETRIES_EXCEEDED_ON_RESUME"
+        add_next_cycle_task "Priority Tasks" "Complete unfinished development work from cycle $(get_current_cycle)"
+        increment_cycle
+        init_cycle_management
+        
+        # Start fresh from planning
+        INITIAL_STATE="planning"
+        echo "planning" > "$STATE_FILE"
+        DEVELOPMENT_RETRIES=0
+    else
+        log "📊 Resuming development with attempt count: $DEVELOPMENT_RETRIES/$MAX_RETRIES"
+    fi
 else
     DEVELOPMENT_RETRIES=0
 fi
