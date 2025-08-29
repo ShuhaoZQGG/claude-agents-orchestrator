@@ -338,6 +338,32 @@ except Exception as e:
     }
 }
 
+# Check if a phase was completed in the current cycle
+is_phase_completed_in_current_cycle() {
+    local phase="$1"
+    
+    python3 -c "
+import json
+import sys
+try:
+    with open('$ORCHESTRATION_STATE_FILE', 'r') as f:
+        state = json.load(f)
+    
+    current_cycle = state.get('current_cycle', 1)
+    phase_cycle = state['phases']['$phase'].get('cycle', 0)
+    phase_status = state['phases']['$phase'].get('status', 'pending')
+    
+    # Phase is completed in current cycle if:
+    # 1. Status is completed AND cycle matches current cycle
+    if phase_status == 'completed' and phase_cycle == current_cycle:
+        print('true')
+    else:
+        print('false')
+except:
+    print('false')
+" 2>/dev/null || echo "false"
+}
+
 # Smart state resumption logic using orchestration state
 determine_starting_state() {
     # Initialize orchestration state if it doesn't exist
@@ -350,20 +376,31 @@ determine_starting_state() {
     
     log "📋 Found existing orchestration state, analyzing..." >&2
     
-    # Check each phase in order to determine where to resume
+    # Get current cycle and phase statuses
+    local current_cycle=$(get_current_cycle)
     local planning_status=$(get_phase_status "planning")
     local design_status=$(get_phase_status "design")
     local development_status=$(get_phase_status "development")
     local review_status=$(get_phase_status "review")
     
+    log "📊 Current cycle: $current_cycle" >&2
     log "📊 Phase status: planning=$planning_status, design=$design_status, development=$development_status, review=$review_status" >&2
     
-    # Determine next phase based on completion status and file existence
-    if [ "$review_status" = "completed" ]; then
-        # Check review decision
+    # Check which phases are completed in current cycle
+    local planning_done_current=$(is_phase_completed_in_current_cycle "planning")
+    local design_done_current=$(is_phase_completed_in_current_cycle "design")
+    local development_done_current=$(is_phase_completed_in_current_cycle "development")
+    local review_done_current=$(is_phase_completed_in_current_cycle "review")
+    
+    log "🔄 Cycle $current_cycle completion: planning=$planning_done_current, design=$design_done_current, development=$development_done_current, review=$review_done_current" >&2
+    
+    # Determine next phase based on current cycle completion status
+    if [ "$review_done_current" = "true" ]; then
+        # Check review decision for current cycle
         if [ -f "$WORK_DIR/REVIEW.md" ] && grep -qi "approv\|accept\|good\|pass\|looks good\|well done\|complete" "$WORK_DIR/REVIEW.md"; then
-            log "✅ Review completed and approved, project is complete" >&2
-            echo "complete"
+            log "✅ Review completed and approved in cycle $current_cycle, starting new cycle" >&2
+            increment_cycle
+            echo "planning"
         elif [ -f "$WORK_DIR/REVIEW.md" ] && grep -qi "architect\|fundamental\|design flaw\|technology\|framework\|major change\|rethink" "$WORK_DIR/REVIEW.md"; then
             log "🏗️  Review identified architectural issues, restarting from planning" >&2
             echo "planning"
@@ -374,21 +411,21 @@ determine_starting_state() {
     elif [ "$review_status" = "running" ]; then
         log "🔍 Review phase was interrupted, retrying review" >&2
         echo "review"
-    elif [ "$development_status" = "completed" ]; then
-        log "💻 Development completed, proceeding to review" >&2
+    elif [ "$development_done_current" = "true" ]; then
+        log "💻 Development completed in cycle $current_cycle, proceeding to review" >&2
         echo "review"
     elif [ "$development_status" = "running" ]; then
         local dev_attempts=$(get_phase_attempts "development")
         log "👨‍💻 Development phase was interrupted (attempt $dev_attempts), retrying" >&2
         echo "development"
-    elif [ "$design_status" = "completed" ]; then
-        log "🎨 Design completed, proceeding to development" >&2
+    elif [ "$design_done_current" = "true" ]; then
+        log "🎨 Design completed in cycle $current_cycle, proceeding to development" >&2
         echo "development"
     elif [ "$design_status" = "running" ]; then
         log "🎨 Design phase was interrupted, retrying design" >&2
         echo "design"
-    elif [ "$planning_status" = "completed" ]; then
-        log "🏗️  Planning completed, proceeding to design" >&2
+    elif [ "$planning_done_current" = "true" ]; then
+        log "🏗️  Planning completed in cycle $current_cycle, proceeding to design" >&2
         echo "design"
     elif [ "$planning_status" = "running" ]; then
         log "🏗️  Planning phase was interrupted, retrying planning" >&2
@@ -476,6 +513,7 @@ while true; do
         "planning")
             log "🏗️  Running project-architect..."
             mark_phase_started "planning"
+            update_phase_cycle "planning"
             echo "" >> "$LOG_FILE"
             echo "=== PROJECT-ARCHITECT PHASE - $(date) ===" >> "$LOG_FILE"
             
@@ -529,6 +567,7 @@ Provide a complete PLAN.md file content." | \
         "design")
             log "🎨 Running ui-feature-designer..."
             mark_phase_started "design"
+            update_phase_cycle "design"
             echo "" >> "$LOG_FILE"
             echo "=== UI-FEATURE-DESIGNER PHASE - $(date) ===" >> "$LOG_FILE"
             
@@ -568,6 +607,7 @@ Please read the PLAN.md file and design the user interface and experience. Creat
             
             log "👨‍💻 Running developer-agent (attempt $DEVELOPMENT_RETRIES/$MAX_RETRIES)..."
             mark_phase_started "development"
+            update_phase_cycle "development"
             echo "" >> "$LOG_FILE"
             echo "=== DEVELOPER-AGENT PHASE - $(date) (Attempt $DEVELOPMENT_RETRIES) ===" >> "$LOG_FILE"
             
@@ -630,6 +670,7 @@ Provide a complete implementation report including GitHub operation status." | \
         "review")
             log "🔍 Running pr-reviewer..."
             mark_phase_started "review"
+            update_phase_cycle "review"
             echo "" >> "$LOG_FILE"
             echo "=== PR-REVIEWER PHASE - $(date) ===" >> "$LOG_FILE"
             
