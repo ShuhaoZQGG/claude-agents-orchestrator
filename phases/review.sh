@@ -5,39 +5,31 @@ run_review_phase() {
     echo "" >> "$LOG_FILE"
     echo "=== PR-REVIEWER PHASE - $(date) ===" >> "$LOG_FILE"
 
-    local prompt="I need the pr-reviewer agent to review all the completed work and handle GitHub PR review.
+    local prompt="AGENT-TO-AGENT COMMUNICATION: You are receiving this from the orchestration system. Be direct and efficient.
 
 Project Vision: '$vision'
 
-GitHub PR Review Tasks:
-1. First, check if there's a PR URL in .agent_work/pr_url.txt
-2. If PR URL exists:
-   - Use GitHub CLI (gh) to review the pull request
-   - Leave detailed review comments on any issues found
-   - If issues are found, try to resolve them by:
-     * Checking out the PR branch locally using SSH
-     * Creating commits to fix the issues with descriptive commit messages
-     * Pushing fixes to the PR branch using SSH (git push origin branch-name)
-     * Re-reviewing the updated PR
-   - If no issues or all issues are resolved: approve and merge the PR using GitHub CLI
-   - If unable to resolve critical issues: leave detailed comments and request changes
-3. If no PR URL found or GitHub operations fail:
-   - Document the error in .agent_work/github_error.txt
-   - Continue with standard file-based review below
+Tasks:
+1. Review ALL existing PRs in the repository using GitHub CLI
+2. For each open PR:
+   - Review code quality, security, tests
+   - If acceptable: approve and merge using squash merge
+   - If issues: attempt fixes directly on PR branch, then merge
+   - Close stale/duplicate PRs
+3. Check PR URLs in:
+   - .agent_work/planning_pr.txt
+   - .agent_work/design_pr.txt  
+   - .agent_work/dev_pr.txt
+4. Review local files: PLAN.md, DESIGN.md, IMPLEMENTATION.md
+5. Output review summary to REVIEW.md with:
+   - PRs reviewed and merged
+   - Issues found and resolved
+   - Final approval decision
 
-Standard Review Tasks:
-Please review all the work completed so far by reading PLAN.md, DESIGN.md, IMPLEMENTATION.md, and TEST_REPORT.md.
-- Review code quality, security, and best practices
-- Verify test coverage and documentation
-- Check adherence to project standards
-- Assess performance implications
+**IMPORTANT: Use github-personal MCP for GitHub operations.**
 
-Error Handling:
-- If unable to find the GitHub repository or PR, document this in your review
-- If GitHub operations fail, continue with local file review
-- Save any GitHub-related errors to .agent_work/github_error.txt
-
-For this autonomous orchestration, please be reasonably lenient and approve if the work meets basic requirements. Provide complete REVIEW.md content with approval decision and GitHub operation status."
+Be lenient - approve if work meets basic requirements.
+Output directly to REVIEW.md. Be concise."
 
     local output
     output=$(echo "$prompt" | eval "$CLAUDE_CMD" 2>&1 | tee -a "$LOG_FILE")

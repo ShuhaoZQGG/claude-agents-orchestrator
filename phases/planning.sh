@@ -11,25 +11,27 @@ run_planning_phase() {
     [ -f "$WORK_DIR/TEST_REPORT.md" ] && existing_docs+=$'\n\nPlease also read the existing TEST_REPORT.md file to understand testing feedback and any issues found.'
     [ -f "$WORK_DIR/REVIEW.md" ] && existing_docs+=$'\n\nPlease also read the existing REVIEW.md file to understand reviewer feedback and requested changes.'
 
-    local prompt="I need the project-architect agent to analyze this vision and create a comprehensive project plan.
+    local prompt="AGENT-TO-AGENT COMMUNICATION: You are receiving this from the orchestration system. Be direct and efficient.
 
 Project Vision: '$vision'
 
-Please analyze this vision and create a comprehensive project plan with:
-- Requirements analysis
-- System architecture 
-- Technology stack selection
-- Project phases and deliverables
-- Risk assessment${existing_docs}
+Tasks:
+1. Analyze vision and create comprehensive project plan
+2. Output requirements, architecture, tech stack, phases, risks to PLAN.md
+3. Create feature branch 'planning/architecture-$(date +%Y%m%d-%H%M%S)'
+4. Commit PLAN.md with message 'feat: architectural planning and requirements analysis'
+5. Push branch and create PR with title 'Architecture: Project planning phase'
+6. Save PR URL to .agent_work/planning_pr.txt${existing_docs}
 
-If this is a revision based on existing work, please:
-- Incorporate lessons learned from previous implementation attempts
-- Address any issues identified in testing or code review
-- Refine the architecture based on real-world constraints discovered
-
-Provide a complete PLAN.md file content."
+If revision: incorporate previous feedback.
+Output directly to PLAN.md. Be concise."
 
     local output
+    # Ensure git is initialized
+    if [ ! -d ".git" ]; then
+        git init >> "$LOG_FILE" 2>&1
+    fi
+    
     output=$(echo "$prompt" | eval "$CLAUDE_CMD" 2>&1 | tee -a "$LOG_FILE")
     if [ $? -eq 0 ] && check_output_quality "$output"; then
         echo "$output" > "$WORK_DIR/PLAN.md"
