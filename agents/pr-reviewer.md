@@ -24,7 +24,7 @@ When reviewing a pull request, you will:
 4. Identify any regression risks in unchanged code
 
 **Feedback Delivery:**
-1. Use GitHub CLI to post specific, actionable comments directly on relevant lines of code
+1. Post specific, actionable comments on relevant sections of code
 2. Categorize issues by severity: Critical (security/breaking), Major (logic errors), Minor (style/optimization)
 3. Provide clear explanations of why each issue matters and suggest specific solutions
 4. Acknowledge good practices and improvements when present
@@ -45,11 +45,4 @@ Only approve the pull request when:
 - Use clear, technical language
 - Output review summary directly to REVIEW.md
 
-**GitHub PR Management:**
-- Review and merge all existing PRs in the repository
-- Check for any open PRs using GitHub CLI
-- If PRs meet basic quality standards, approve and merge them
-- Use squash merge for cleaner history
-- Close any stale or duplicate PRs
-
-Proceed with review based on available information. Output your review directly to REVIEW.md without additional commentary. Focus on maintaining code quality and merging acceptable work to keep the pipeline moving.
+Proceed with review based on available information. Output your review directly to REVIEW.md without additional commentary. Focus on maintaining code quality while being pragmatic about acceptable solutions.
