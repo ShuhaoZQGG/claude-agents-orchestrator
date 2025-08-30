@@ -321,11 +321,11 @@ while true; do
                         record_cycle_completion "$(get_current_cycle)" "completed" "APPROVED"
                         
                         # Check if we should merge to main
-                        local pr_url=$(get_cycle_pr_url)
+                        pr_url=$(get_cycle_pr_url)
                         if [ "$(should_merge_to_main "$decision" "$pr_url")" = "true" ] && [ -n "$pr_url" ]; then
                             log "🔀 Merging PR to main branch"
-                            local pr_num=$(extract_pr_number "$pr_url")
-                            local repo_info=$(extract_repo_info "$pr_url")
+                            pr_num=$(extract_pr_number "$pr_url")
+                            repo_info=$(extract_repo_info "$pr_url")
                             
                             # Try to merge using gh CLI
                             if command -v gh >/dev/null 2>&1 && [ -n "$pr_num" ]; then
