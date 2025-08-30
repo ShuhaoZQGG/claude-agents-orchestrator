@@ -55,9 +55,34 @@ PLEASE READ CYCLE_HANDOFF.md for context from previous phases."
 PLEASE READ NEXT_CYCLE_TASKS.md for accumulated tasks from previous cycles."
     fi
     
+    # Fetch GitHub issues if repository is configured
+    local github_issues=""
+    local github_context=""
+    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+        local issue_list=$(gh issue list --state open --limit 20 --json number,title,body,labels 2>/dev/null || echo "")
+        if [ -n "$issue_list" ] && [ "$issue_list" != "[]" ]; then
+            # Store raw issues for handoff
+            github_issues="$issue_list"
+            
+            # Format issues for architect prompt
+            github_context="
+
+ADDITIONAL CONTEXT - GITHUB ISSUES:
+The following open GitHub issues exist in this repository and should be incorporated into your planning:
+
+$issue_list
+
+When creating PLAN.md, please:
+1. Add a 'GitHub Issues Analysis' section that lists and categorizes these issues
+2. Map each issue to specific architectural components and development phases
+3. Incorporate issue requirements into your task breakdown
+4. Prioritize issues based on their impact and dependencies"
+        fi
+    fi
+    
     local prompt="AGENT-TO-AGENT COMMUNICATION: Cycle $cycle_num Planning Phase
 
-Project Vision: '$vision'
+Project Vision: '$vision'$github_context
 
 Tasks:
 1. Analyze vision and create comprehensive project plan
@@ -84,6 +109,17 @@ Output directly to PLAN.md. Be concise."
         
         # Update cycle handoff
         update_handoff_completed "Planning" "Created architectural plan and requirements"
+        
+        # If GitHub issues were found, store them for downstream phases
+        if [ -n "$github_issues" ]; then
+            echo "" >> "$CYCLE_HANDOFF_FILE"
+            echo "## GitHub Issues (Raw Data)" >> "$CYCLE_HANDOFF_FILE"
+            echo '```json' >> "$CYCLE_HANDOFF_FILE"
+            echo "$github_issues" >> "$CYCLE_HANDOFF_FILE"
+            echo '```' >> "$CYCLE_HANDOFF_FILE"
+            echo "" >> "$CYCLE_HANDOFF_FILE"
+            echo "Note: These issues have been analyzed and mapped in PLAN.md" >> "$CYCLE_HANDOFF_FILE"
+        fi
         
         # Check and save PR URL if created
         if [ -f "$WORK_DIR/cycle_pr.txt" ]; then

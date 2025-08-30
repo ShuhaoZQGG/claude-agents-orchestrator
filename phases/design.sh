@@ -27,9 +27,20 @@ Git Tasks (CONTINUING CYCLE $cycle_num):
 PLEASE READ CYCLE_HANDOFF.md for context from planning phase."
     fi
     
+    # Check if GitHub issues are in handoff
+    local github_context=""
+    if [ -f "$CYCLE_HANDOFF_FILE" ] && grep -q "## GitHub Issues" "$CYCLE_HANDOFF_FILE"; then
+        github_context="
+
+NOTE: GitHub issues have been analyzed in PLAN.md. When designing UI/UX:
+- Consider user-facing requirements from the issues
+- Design interfaces that address issue concerns
+- Ensure your mockups solve the problems described in issues"
+    fi
+    
     local prompt="AGENT-TO-AGENT COMMUNICATION: Cycle $cycle_num Design Phase
 
-Project Vision: '$vision'
+Project Vision: '$vision'$github_context
 
 Tasks:
 1. Read PLAN.md and design UI/UX

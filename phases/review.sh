@@ -21,9 +21,20 @@ run_review_phase() {
 PLEASE READ CYCLE_HANDOFF.md for full cycle context."
     fi
     
+    # Check if GitHub issues are in handoff
+    local github_context=""
+    if [ -f "$CYCLE_HANDOFF_FILE" ] && grep -q "## GitHub Issues" "$CYCLE_HANDOFF_FILE"; then
+        github_context="
+
+NOTE: GitHub issues were incorporated into this cycle. When reviewing:
+- Check if the implementation addresses the issues identified
+- Verify that issue requirements have been met
+- Consider whether issues can be closed after this cycle"
+    fi
+    
     local prompt="AGENT-TO-AGENT COMMUNICATION: Cycle $cycle_num Review Phase
 
-Project Vision: '$vision'
+Project Vision: '$vision'$github_context
 
 Tasks:
 1. Review the cycle PR: ${cycle_pr:-'Check .agent_work/cycle_pr.txt'}

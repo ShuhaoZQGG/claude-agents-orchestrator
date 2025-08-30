@@ -33,9 +33,21 @@ PLEASE READ CYCLE_HANDOFF.md for context from design phase."
 IMPORTANT: Read REVIEW.md for feedback from previous attempt."
     fi
     
+    # Check if GitHub issues are in handoff
+    local github_context=""
+    if [ -f "$CYCLE_HANDOFF_FILE" ] && grep -q "## GitHub Issues" "$CYCLE_HANDOFF_FILE"; then
+        github_context="
+
+NOTE: GitHub issues have been mapped in PLAN.md. When implementing:
+- Focus on addressing the specific issues identified
+- Reference issue numbers in your commits when fixing them
+- Ensure your implementation solves the problems described
+- Test that your code addresses the issue requirements"
+    fi
+    
     local prompt="AGENT-TO-AGENT COMMUNICATION: Cycle $cycle_num Development Phase (Attempt $attempt)
 
-Project Vision: '$vision'
+Project Vision: '$vision'$github_context
 
 Tasks:
 1. Read PLAN.md and DESIGN.md
