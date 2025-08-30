@@ -147,6 +147,9 @@ INITIAL_STATE=$(determine_starting_state)
 echo "$INITIAL_STATE" > "$STATE_FILE"
 log "🚀 Starting/resuming from state: $INITIAL_STATE"
 
+# Initialize cycle management (after state determination to avoid output corruption)
+init_cycle_management
+
 # Counter for infinite loop protection is provided by config.sh (MAX_RETRIES)
 
 # Get development retry count from orchestration state
@@ -162,7 +165,7 @@ if [ "$INITIAL_STATE" = "development" ]; then
         record_cycle_completion "$(get_current_cycle)" "stuck" "MAX_RETRIES_EXCEEDED_ON_RESUME"
         add_next_cycle_task "Priority Tasks" "Complete unfinished development work from cycle $(get_current_cycle)"
         increment_cycle
-        init_cycle_management
+        # Will init cycle management after state is determined
         
         # Start fresh from planning
         INITIAL_STATE="planning"
@@ -174,9 +177,6 @@ if [ "$INITIAL_STATE" = "development" ]; then
 else
     DEVELOPMENT_RETRIES=0
 fi
-
-# Initialize cycle management
-init_cycle_management
 
 # Create initial context
 cat > "$CONTEXT_FILE" << EOF
