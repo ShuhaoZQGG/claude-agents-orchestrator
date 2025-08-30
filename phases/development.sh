@@ -55,6 +55,13 @@ Update CYCLE_HANDOFF.md with:
 - Technical: Implementation decisions and trade-offs
 <!-- HANDOFF_END -->
 
+<!-- MARKERS_START -->
+Add status marker to your output:
+- If ALL planned features are complete: <!-- FEATURES_STATUS: ALL_COMPLETE -->
+- If some features remain: <!-- FEATURES_STATUS: PARTIAL_COMPLETE -->
+- If need new requirements: <!-- FEATURES_STATUS: NEEDS_PLANNING -->
+<!-- MARKERS_END -->
+
 Output summary to IMPLEMENTATION.md. Be concise."
 
     local output

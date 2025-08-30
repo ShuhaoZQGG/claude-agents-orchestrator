@@ -33,6 +33,7 @@ source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/utils.sh"
 source "$SCRIPT_DIR/lib/state.sh"
 source "$SCRIPT_DIR/lib/cycle.sh"
+source "$SCRIPT_DIR/lib/intelligence.sh"
 
 # Soft-check for python3 like original (state updates will warn/fallback if missing)
 if ! command -v python3 >/dev/null 2>&1; then
@@ -227,37 +228,50 @@ while true; do
     
     case $STATE in
         "planning")
-            log "🏗️  Running project-architect..."
-            mark_phase_started "planning"
-            update_phase_cycle "planning"
-            source "$SCRIPT_DIR/phases/planning.sh"
-            if run_planning_phase "$VISION"; then
-                mark_phase_completed "planning"
+            # Check if we should skip planning (intelligent detection)
+            if [ "$(should_skip_planning)" = "true" ] && [ "$(get_current_cycle)" -gt 1 ]; then
+                log "🎯 Skipping planning - continuing with existing architecture"
                 echo "design" > "$STATE_FILE"
-                echo "RESULT: Architecture planning completed successfully" >> "$LOG_FILE"
-                success "Architecture planning completed"
             else
-                echo "ERROR: Architecture planning failed or produced insufficient output" >> "$LOG_FILE"
-                error "Architecture planning failed - check that project-architect agent is properly configured"
-                exit 1
+                log "🏗️  Running project-architect..."
+                mark_phase_started "planning"
+                update_phase_cycle "planning"
+                source "$SCRIPT_DIR/phases/planning.sh"
+                if run_planning_phase "$VISION"; then
+                    mark_phase_completed "planning"
+                    echo "design" > "$STATE_FILE"
+                    echo "RESULT: Architecture planning completed successfully" >> "$LOG_FILE"
+                    success "Architecture planning completed"
+                else
+                    echo "ERROR: Architecture planning failed or produced insufficient output" >> "$LOG_FILE"
+                    error "Architecture planning failed - check that project-architect agent is properly configured"
+                    exit 1
+                fi
             fi
             ;;
             
         "design")
-            log "🎨 Running ui-feature-designer..."
-            mark_phase_started "design"
-            update_phase_cycle "design"
-            source "$SCRIPT_DIR/phases/design.sh"
-            if run_design_phase "$VISION"; then
-                mark_phase_completed "design"
+            # Check if we should skip design (intelligent detection)
+            if [ "$(should_skip_design)" = "true" ] && [ "$(get_current_cycle)" -gt 1 ]; then
+                log "🎯 Skipping design - no UI/UX changes needed"
                 echo "development" > "$STATE_FILE"
-                DEVELOPMENT_RETRIES=0  # Reset retry counter
-                echo "RESULT: UI/UX design completed successfully" >> "$LOG_FILE"
-                success "UI/UX design completed"
+                DEVELOPMENT_RETRIES=0
             else
-                echo "ERROR: UI/UX design failed or produced insufficient output" >> "$LOG_FILE"
-                error "UI/UX design failed - check that ui-feature-designer agent is properly configured"
-                exit 1
+                log "🎨 Running ui-feature-designer..."
+                mark_phase_started "design"
+                update_phase_cycle "design"
+                source "$SCRIPT_DIR/phases/design.sh"
+                if run_design_phase "$VISION"; then
+                    mark_phase_completed "design"
+                    echo "development" > "$STATE_FILE"
+                    DEVELOPMENT_RETRIES=0  # Reset retry counter
+                    echo "RESULT: UI/UX design completed successfully" >> "$LOG_FILE"
+                    success "UI/UX design completed"
+                else
+                    echo "ERROR: UI/UX design failed or produced insufficient output" >> "$LOG_FILE"
+                    error "UI/UX design failed - check that ui-feature-designer agent is properly configured"
+                    exit 1
+                fi
             fi
             ;;
             
@@ -305,11 +319,39 @@ while true; do
                 case "$decision" in
                     "APPROVED")
                         record_cycle_completion "$(get_current_cycle)" "completed" "APPROVED"
+                        
+                        # Check if we should merge to main
+                        local pr_url=$(get_cycle_pr_url)
+                        if [ "$(should_merge_to_main "$decision" "$pr_url")" = "true" ] && [ -n "$pr_url" ]; then
+                            log "🔀 Merging PR to main branch"
+                            local pr_num=$(extract_pr_number "$pr_url")
+                            local repo_info=$(extract_repo_info "$pr_url")
+                            
+                            # Try to merge using gh CLI
+                            if command -v gh >/dev/null 2>&1 && [ -n "$pr_num" ]; then
+                                gh pr merge "$pr_num" --squash --delete-branch 2>/dev/null || log "⚠️  Could not auto-merge PR"
+                            fi
+                        fi
+                        
                         increment_cycle
+                        
+                        # Clear branch/PR info for new cycle (force new branch)
+                        set_cycle_branch ""
+                        set_cycle_pr_url ""
+                        
                         init_cycle_management  # Prepare for next cycle
-                        echo "planning" > "$STATE_FILE"
-                        echo "RESULT: Cycle $(get_current_cycle) completed - APPROVED, starting new cycle" >> "$LOG_FILE"
-                        success "Cycle completed - APPROVED, starting new cycle"
+                        
+                        # Intelligently determine next phase
+                        if [ "$(check_features_complete)" = "true" ]; then
+                            echo "planning" > "$STATE_FILE"
+                            success "All features complete - starting new planning cycle"
+                        else
+                            # Skip to development if features remain
+                            echo "development" > "$STATE_FILE"
+                            success "Continuing with remaining features - skipping to development"
+                        fi
+                        
+                        echo "RESULT: Cycle completed - APPROVED" >> "$LOG_FILE"
                         ;;
                     "NEEDS_ARCHITECTURE_CHANGE")
                         echo "planning" > "$STATE_FILE"

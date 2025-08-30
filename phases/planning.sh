@@ -16,6 +16,14 @@ run_planning_phase() {
 
     # Check if we need to create a new cycle branch or use existing
     local cycle_num=$(get_current_cycle)
+    
+    # Check if intention changed - if so, force new branch
+    if [ "$(branch_intention_changed "$vision")" = "true" ]; then
+        log "🔄 Intention changed - creating new branch"
+        set_cycle_branch ""  # Clear to force new branch
+        set_cycle_pr_url ""  # Clear old PR
+    fi
+    
     local branch_name=$(get_cycle_branch)
     local existing_pr=$(check_existing_pr)
     

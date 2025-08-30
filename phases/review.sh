@@ -32,14 +32,22 @@ Tasks:
    - Code quality, security, tests
    - Adherence to plan and design
    - Completeness of implementation
-4. Make decision and add marker:
-   <!-- CYCLE_DECISION: APPROVED --> (merge PR, start new cycle)
-   <!-- CYCLE_DECISION: NEEDS_REVISION --> (request changes, retry development)
-   <!-- CYCLE_DECISION: NEEDS_ARCHITECTURE_CHANGE --> (major issues, restart from planning)
-5. If APPROVED: merge the cycle PR using squash merge
+4. Make decision and add ALL these markers:
+   Decision: <!-- CYCLE_DECISION: APPROVED|NEEDS_REVISION|NEEDS_ARCHITECTURE_CHANGE -->
+   Architecture: <!-- ARCHITECTURE_NEEDED: YES|NO -->
+   Design: <!-- DESIGN_NEEDED: YES|NO -->
+   Breaking: <!-- BREAKING_CHANGES: YES|NO -->
+5. If APPROVED and no breaking changes: merge PR to main using GitHub CLI:
+   - Use 'gh pr merge --squash --delete-branch PR_NUMBER'
+   - Create new branch for next cycle if work continues
 6. Update NEXT_CYCLE_TASKS.md with any deferred items${handoff_context}
 
 **IMPORTANT: Use github-personal MCP for GitHub operations.**
+
+MERGE STRATEGY:
+- If approved with no breaking changes: MERGE TO MAIN immediately
+- After merge: create NEW branch for next cycle (don't reuse old branch)
+- Each cycle should have its own branch and PR for clean history
 
 <!-- HANDOFF_START -->
 Update CYCLE_HANDOFF.md with:

@@ -101,7 +101,12 @@ except:
 " 2>/dev/null)
     
     if [ -z "$branch_name" ]; then
-        branch_name="cycle-${cycle_num}-$(date +%Y%m%d-%H%M%S)"
+        # Use intelligent branch naming if available
+        if command -v generate_smart_branch_name >/dev/null 2>&1; then
+            branch_name=$(generate_smart_branch_name "$cycle_num" "development" "${VISION:-development}")
+        else
+            branch_name="cycle-${cycle_num}-$(date +%Y%m%d-%H%M%S)"
+        fi
         set_cycle_branch "$branch_name"
     fi
     
