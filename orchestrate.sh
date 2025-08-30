@@ -277,13 +277,8 @@ while true; do
             
         "development")
             DEVELOPMENT_RETRIES=$((DEVELOPMENT_RETRIES + 1))
-            if [ $DEVELOPMENT_RETRIES -gt $MAX_RETRIES ]; then
-                echo "ERROR: Maximum development retries ($MAX_RETRIES) exceeded" >> "$LOG_FILE"
-                error "Development failed after $MAX_RETRIES attempts - manual intervention required"
-                exit 1
-            fi
             
-            log "👨‍💻 Running developer-agent (attempt $DEVELOPMENT_RETRIES/$MAX_RETRIES)..."
+            log "👨‍💻 Running developer-agent (attempt $DEVELOPMENT_RETRIES)..."
             mark_phase_started "development"
             update_phase_cycle "development"
             source "$SCRIPT_DIR/phases/development.sh"
