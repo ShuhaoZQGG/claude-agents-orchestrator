@@ -300,7 +300,7 @@ while true; do
             if run_review_phase "$VISION"; then
                 mark_phase_completed "review"
                 # Extract structured decision from review
-                local decision=$(extract_review_decision)
+                decision=$(extract_review_decision)
                 
                 case "$decision" in
                     "APPROVED")
