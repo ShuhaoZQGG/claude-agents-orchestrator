@@ -278,6 +278,16 @@ while true; do
         "development")
             DEVELOPMENT_RETRIES=$((DEVELOPMENT_RETRIES + 1))
             
+            # Check for any unmerged PRs before starting development
+            if command -v gh >/dev/null 2>&1; then
+                open_prs=$(gh pr list --state open --json number,headRefName 2>/dev/null || echo "[]")
+                if [ "$open_prs" != "[]" ] && [ -n "$open_prs" ]; then
+                    log "⚠️  Found open PRs that should be reviewed/merged first:"
+                    echo "$open_prs" | jq -r '.[] | "  - PR #\(.number) (\(.headRefName))"' 2>/dev/null || true
+                    log "🔍 Ensuring previous work is merged to prevent conflicts"
+                fi
+            fi
+            
             log "👨‍💻 Running developer-agent (attempt $DEVELOPMENT_RETRIES)..."
             mark_phase_started "development"
             update_phase_cycle "development"
@@ -315,16 +325,34 @@ while true; do
                     "APPROVED")
                         record_cycle_completion "$(get_current_cycle)" "completed" "APPROVED"
                         
-                        # Check if we should merge to main
+                        # CRITICAL: Ensure PR is merged before continuing
                         pr_url=$(get_cycle_pr_url)
-                        if [ "$(should_merge_to_main "$decision" "$pr_url")" = "true" ] && [ -n "$pr_url" ]; then
-                            log "🔀 Merging PR to main branch"
+                        if [ -n "$pr_url" ]; then
+                            log "🔀 MANDATORY: Ensuring PR is merged to main before continuing"
                             pr_num=$(extract_pr_number "$pr_url")
-                            repo_info=$(extract_repo_info "$pr_url")
                             
-                            # Try to merge using gh CLI
+                            # Check PR status first
                             if command -v gh >/dev/null 2>&1 && [ -n "$pr_num" ]; then
-                                gh pr merge "$pr_num" --squash --delete-branch 2>/dev/null || log "⚠️  Could not auto-merge PR"
+                                pr_status=$(gh pr view "$pr_num" --json state -q .state 2>/dev/null || echo "UNKNOWN")
+                                
+                                if [ "$pr_status" = "OPEN" ]; then
+                                    log "⚠️  PR $pr_num is still open - reviewer should have merged it"
+                                    log "🔧 Attempting to merge now to prevent conflicts"
+                                    gh pr merge "$pr_num" --squash --delete-branch 2>/dev/null || {
+                                        error "❌ Could not merge PR $pr_num - manual intervention required"
+                                        error "Cannot continue without merging to prevent conflicts"
+                                        exit 1
+                                    }
+                                    log "✅ PR successfully merged to main"
+                                elif [ "$pr_status" = "MERGED" ]; then
+                                    log "✅ PR already merged to main"
+                                else
+                                    log "⚠️  PR status: $pr_status"
+                                fi
+                                
+                                # Pull latest main to ensure we're up to date
+                                log "📥 Pulling latest main branch"
+                                git checkout main 2>/dev/null && git pull 2>/dev/null || true
                             fi
                         fi
                         

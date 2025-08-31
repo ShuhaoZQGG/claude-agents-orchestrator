@@ -101,6 +101,9 @@ except:
 " 2>/dev/null)
     
     if [ -z "$branch_name" ]; then
+        # IMPORTANT: Always ensure we're on main before creating new branch
+        log "📌 Ensuring new branch will be created from main"
+        
         # Use intelligent branch naming if available
         if command -v generate_smart_branch_name >/dev/null 2>&1; then
             branch_name=$(generate_smart_branch_name "$cycle_num" "development" "${VISION:-development}")

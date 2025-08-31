@@ -16,10 +16,12 @@ run_development_phase() {
     
     local git_instructions="
 Git Tasks (CONTINUING CYCLE $cycle_num, Attempt $attempt):
-1. Checkout existing branch: '$branch_name'
-2. Implement features using TDD
-3. Commit code with message: 'feat(cycle-$cycle_num): implement core features (attempt $attempt)'
-4. Push to existing PR: ${existing_pr:-'(create if not exists)'}"
+1. IMPORTANT: First ensure you're on latest main branch (git checkout main && git pull)
+2. Create/checkout branch: '$branch_name' (branch from main, not from other branches)
+3. Implement features using TDD approach
+4. Commit code with message: 'feat(cycle-$cycle_num): implement core features (attempt $attempt)'
+5. Push to branch and create PR targeting MAIN branch (not any feature branch)
+6. CRITICAL: PR must target 'main' or 'master' branch, never target other feature branches"
     
     # Check for handoff notes and review feedback
     local handoff_context=""
@@ -49,16 +51,30 @@ NOTE: GitHub issues have been mapped in PLAN.md. When implementing:
 
 Project Vision: '$vision'$github_context
 
+CRITICAL PR COORDINATION RULES:
+- ALWAYS pull latest main before creating branch
+- NEVER create PR targeting another feature branch
+- ALL PRs must target 'main' or 'master' branch
+- Wait for previous PR to be merged before starting new work
+- If there's an existing unmerged PR, DO NOT create another one
+
 Tasks:
-1. Read PLAN.md and DESIGN.md
-2. Implement features using TDD approach
-3. Write tests first, then implementation$git_instructions${handoff_context}
+1. Check for any existing unmerged PRs and ensure they're reviewed/merged first
+2. Read PLAN.md and DESIGN.md for requirements
+3. Pull latest main branch before starting work
+4. Implement features using TDD approach
+5. Write tests first, then implementation$git_instructions${handoff_context}
 
 **IMPORTANT: Use github-personal MCP for GitHub operations.**
 
 If GitHub repo doesn't exist:
 - Create repository matching current directory name
 - Set up SSH remote
+
+PR CREATION RULES:
+- Base branch: main (always)
+- Target branch: main (always)
+- Never stack PRs on top of each other
 
 <!-- HANDOFF_START -->
 Update CYCLE_HANDOFF.md with:

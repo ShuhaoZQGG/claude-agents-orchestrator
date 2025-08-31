@@ -36,29 +36,39 @@ NOTE: GitHub issues were incorporated into this cycle. When reviewing:
 
 Project Vision: '$vision'$github_context
 
+CRITICAL MERGE COORDINATION:
+- YOU MUST MERGE APPROVED PRs TO MAIN BEFORE NEXT DEVELOPER STARTS
+- This prevents conflicts between multiple developers working in parallel
+- Never leave PRs unmerged when moving to next cycle
+
 Tasks:
 1. Review the cycle PR: ${cycle_pr:-'Check .agent_work/cycle_pr.txt'}
-2. Review local files: PLAN.md, DESIGN.md, IMPLEMENTATION.md
-3. Evaluate:
+2. Verify PR targets main branch (reject if targeting feature branch)
+3. Review local files: PLAN.md, DESIGN.md, IMPLEMENTATION.md
+4. Evaluate:
    - Code quality, security, tests
    - Adherence to plan and design
    - Completeness of implementation
-4. Make decision and add ALL these markers:
+5. Make decision and add ALL these markers:
    Decision: <!-- CYCLE_DECISION: APPROVED|NEEDS_REVISION|NEEDS_ARCHITECTURE_CHANGE -->
    Architecture: <!-- ARCHITECTURE_NEEDED: YES|NO -->
    Design: <!-- DESIGN_NEEDED: YES|NO -->
    Breaking: <!-- BREAKING_CHANGES: YES|NO -->
-5. If APPROVED and no breaking changes: merge PR to main using GitHub CLI:
+6. MANDATORY IF APPROVED: Immediately merge PR to main using GitHub CLI:
    - Use 'gh pr merge --squash --delete-branch PR_NUMBER'
-   - Create new branch for next cycle if work continues
-6. Update NEXT_CYCLE_TASKS.md with any deferred items${handoff_context}
+   - DO NOT SKIP THIS STEP - merge must happen before next developer
+   - Verify merge succeeded before completing review
+7. After merge: ensure next cycle starts from fresh main branch
+8. Update NEXT_CYCLE_TASKS.md with any deferred items${handoff_context}
 
 **IMPORTANT: Use github-personal MCP for GitHub operations.**
 
-MERGE STRATEGY:
-- If approved with no breaking changes: MERGE TO MAIN immediately
-- After merge: create NEW branch for next cycle (don't reuse old branch)
-- Each cycle should have its own branch and PR for clean history
+MERGE STRATEGY (MANDATORY):
+- If APPROVED: MUST merge to main immediately (no exceptions)
+- Merge method: squash and delete branch
+- After merge: next developer starts fresh from updated main
+- NEVER leave approved PRs unmerged
+- Each cycle must complete its merge before next begins
 
 <!-- HANDOFF_START -->
 Update CYCLE_HANDOFF.md with:
